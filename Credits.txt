@@ -1,0 +1,10 @@
+A big thank you to all the people and sources listed here.
+
+Original development:
+- Norman Mitschke
+
+Information and code learned from:
+- https://github.com/id-Software/Enemy-Territory
+- Wolfgang Prinz, The MDC File Format, May 2, 2004, https://gamespy-archives.quaddicted.com/sites/www.planetwolfenstein.com/themdcfile/MDC_File_Format.pdf
+- https://github.com/neumond/blender-md3, https://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/MD3 (parts of this code is in this codebase)
+- MD3 File Format, https://www.icculus.org/homepages/phaethon/q3a/formats/md3format.html
