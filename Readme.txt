@@ -2,9 +2,13 @@ INTRODUCTION
 ------------
 This is a plugin for Blender. It handles import and export of the MDC file
 format. The MDC file format is a 3D model format used in games such as
-Return to Castle Wolfenstein or Wolfenstein: Enemy Territory. This plugin
-is still in development (see the Note in the following section about the uv
-maps). Apart from that it should already be usable.
+Return to Castle Wolfenstein or Wolfenstein: Enemy Territory.
+
+This plugin is still in development, there is 1 known issue, which is when
+you choose to "remove doubles" on a mesh, it will lead to an export error,
+because of the vertex normal objects. A quick workaround is to delete them
+manually once they appear after the "remove doubles" (takes a while usually
+for blender to update the scene).
 
 ABOUT USING THIS PLUGIN
 -----------------------
@@ -26,12 +30,6 @@ Combobox called 'Vertex Normals' in the import dialog.
 
 Support for Blender ranges from version 2.69 to 2.79, other versions may work
 too.
-
-Note: that uv mapping is still an unfixed issue in this plugin. This means that
-you need to make sure that each vertex in your model is mapped exactly once
-to the uv map, only then will the uv map correctly be exported. Some future
-versions of this script may include a fix for this so one can create nice uv
-maps in Blender and export them to MDC.
 
 ABOUT CODE
 ----------

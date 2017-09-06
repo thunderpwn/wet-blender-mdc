@@ -234,7 +234,134 @@ class BlenderScene:
             bpy.context.scene.frame_set(0) # TODO is this needed?
             mesh = object.to_mesh(bpy.context.scene, True, 'PREVIEW')
 
+            # faces
+            for face in mesh.polygons:
+
+                faceIndexes = []
+
+                for index in face.vertices:
+
+                    faceIndexes.append(index)
+
+                blenderObject.faces.append(faceIndexes)
+
             # uvMap
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            uv_layer = mesh.uv_layers.active
+
+            uvMap = []
+            uvMapQueue = []
+
+            newVertexCount = 0
+
+            for i in range(0, len(mesh.vertices)):
+                uvMap.append(None)
+                uvMapQueue.append(None)
+
+            # prepare uvMapQueue
+            # this is to handle 1 to many mappings of a vertex to the uvMap
+            for polygon in mesh.polygons:
+
+                faceNum = polygon.index
+
+                for loopIndex in polygon.loop_indices:
+
+                    loop = mesh.loops[loopIndex]
+
+                    vertexIndex = loop.vertex_index
+                    uvCoordinates = uv_layer.data[loop.index].uv
+
+                    if uvMapQueue[vertexIndex] == None:
+                        uvMapQueue[vertexIndex] = []
+
+                    uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
+
+
+            for vertexIndex, vertexMappings in enumerate(uvMapQueue):
+
+                # split vertex by different uv mapping
+                splitQueue = []
+
+                for mapping in vertexMappings:
+
+                    faceNum = mapping[0]
+                    uvCoords = mapping[1]
+
+                    if uvMap[vertexIndex] == None:
+
+                        uvMap[vertexIndex] = uvCoords
+
+                    else:
+
+                        if uvMap[vertexIndex] != uvCoords:
+                            splitQueue.append(mapping)
+
+                # process splitQueue, create new verts and faces if needed
+                originalUvMapLen = len(uvMap) - 1
+
+                for splitQueueItem in splitQueue:
+
+                    uvCoords = splitQueueItem[1]
+
+                    # find out if we need to create a new vertex
+
+                    j = len(uvMap) - 1
+                    uvMapIndex = vertexIndex
+                    uvMapIndexFound = False
+
+                    while originalUvMapLen < j:
+
+                        if uvMap[j] == uvCoords:
+
+                            if uvMapIndexFound == True:
+                                print("multiple uv indexes, this shouldn't happen")
+
+                            uvMapIndexFound = True
+                            uvMapIndex = j
+                            newVertexCount += 1
+
+                        j -= 1
+
+                    # modify verts and normals (simply append)
+                    if uvMapIndexFound == False:
+
+                        uvMap.append(uvCoords)
+                        uvMapIndex = len(uvMap) - 1
+
+                        for frameNum in range(0, blenderScene.numFrames):
+
+                            frameVert = blenderObject.verts[frameNum][vertexIndex]
+                            frameNormal = blenderObject.normals[frameNum][vertexIndex]
+
+                            blenderObject.verts[frameNum].append(frameVert)
+                            blenderObject.normals[frameNum].append(frameNormal)
+
+                    # modify face indexes to match new vertex
+                    faceNum = splitQueueItem[0]
+                    face = blenderObject.faces[faceNum]
+                    oldVertexNum = vertexIndex
+                    newVertexNum = uvMapIndex
+
+                    if face[0] == oldVertexNum:
+                        newFace = (newVertexNum, face[1], face[2])
+                        blenderObject.faces[faceNum] = newFace
+                    elif face[1] == oldVertexNum:
+                        newFace = (face[0], newVertexNum, face[2])
+                        blenderObject.faces[faceNum] = newFace
+                    else:
+                        newFace = (face[0], face[1], newVertexNum)
+                        blenderObject.faces[faceNum] = newFace
+
+            blenderObject.uvMap = uvMap
+
+            if newVertexCount > 0:
+                print("MDCExport Info: new vertices added for object=: " \
+                      + str(blenderObject.name) + \
+                      ", count=" + str(newVertexCount))
+
+            '''
+            # old uvMap code
             uvMap = []
             uv_layer = mesh.uv_layers.active
 
@@ -254,17 +381,7 @@ class BlenderScene:
                         uvMap[vertexIndex] = uv
 
             blenderObject.uvMap = uvMap
-
-            # faces
-            for face in mesh.polygons:
-
-                faceIndexes = []
-
-                for index in face.vertices:
-
-                    faceIndexes.append(index)
-
-                blenderObject.faces.append(faceIndexes)
+            '''
 
             # materialNames
             for slot in object.material_slots:
