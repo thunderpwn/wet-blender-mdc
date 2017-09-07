@@ -292,14 +292,6 @@ class MDCXyzn:
                 lon = 128
                 lat = 0
 
-        # TODO quick fix for math domain error, remove this
-        if nz > 1:
-            print("math domain error quick fix: " + str(nz))
-            nz = 1
-        if nz < -1:
-            print("math domain error quick fix: " + str(nz))
-            nz = -1
-
         lat = int(math.atan2(ny, nx) * 255 / (2 * math.pi))
         lon = int(math.acos(nz) * 255 / (2 * math.pi))
 

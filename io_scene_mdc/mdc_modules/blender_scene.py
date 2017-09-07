@@ -218,7 +218,8 @@ class BlenderScene:
                     x = matrix_basis[0][2]
                     y = matrix_basis[1][2]
                     z = matrix_basis[2][2]
-                    normal = (x, y, z)
+                    normal = mathutils.Vector((x, y, z))
+                    normal.normalize()
 
                     vertexIndex = normalObject.parent_vertices[0]
                     frameNormals[vertexIndex] = normal
