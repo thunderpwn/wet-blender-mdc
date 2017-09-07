@@ -160,10 +160,10 @@ class ExportMDC(bpy.types.Operator, ExportHelper):
 
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportMDC.bl_idname, text="RtCW/ET Model (.mdc)")
+    self.layout.operator(ImportMDC.bl_idname, text=bl_info['name'])
 
 def menu_func_export(self, context):
-    self.layout.operator(ExportMDC.bl_idname, text="RtCW/ET Model (.mdc)")
+    self.layout.operator(ExportMDC.bl_idname, text=bl_info['name'])
 
 
 def register():
