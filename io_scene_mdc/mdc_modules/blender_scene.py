@@ -25,7 +25,6 @@
 
 import bpy
 import mathutils
-import os
 
 from .util import Util
 from .options import ImportOptions, ExportOptions
@@ -195,19 +194,17 @@ class BlenderScene:
                 bpy.context.scene.frame_set(i)
                 mesh = object.to_mesh(bpy.context.scene, True, 'PREVIEW')
 
-                #mesh.calc_normals_split()
-
-                # TODO wegen normals frame set
-
                 frameVerts = []
                 frameNormals = []
 
                 for vert in mesh.vertices:
 
-                    globalCoords = object.matrix_world * vert.co
-                    frameVerts.append(globalCoords)
+                    globalVert = object.matrix_world * vert.co
+                    frameVerts.append(globalVert)
 
-                    frameNormals.append(vert.normal)
+                    globalNormal = object.matrix_world * vert.normal
+                    globalNormal.normalize()
+                    frameNormals.append(globalNormal)
 
                 # make an extra run for the user modelled vertex normals
                 for normalObject in normalObjects:
@@ -229,6 +226,7 @@ class BlenderScene:
                 blenderObject.normals.append(frameNormals)
 
                 bpy.data.meshes.remove(mesh)
+
 
             # get a new mesh
             bpy.context.scene.frame_set(0) # TODO is this needed?

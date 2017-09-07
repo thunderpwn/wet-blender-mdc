@@ -34,8 +34,6 @@ bl_info = {
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-import sys
-import os
 
 
 class ImportMDC(bpy.types.Operator, ImportHelper):
