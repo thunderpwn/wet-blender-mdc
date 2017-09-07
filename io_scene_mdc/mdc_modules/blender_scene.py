@@ -25,6 +25,7 @@
 
 import bpy
 import mathutils
+import os
 
 from .util import Util
 from .options import ImportOptions, ExportOptions
