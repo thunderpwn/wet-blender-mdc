@@ -127,8 +127,12 @@ class Verify:
 
             # blenderObject.materialNames
             materialNamesLen = len(object.materialNames)
-            if materialNamesLen <= 0 or materialNamesLen > MDCShader.maxShaders:
-                return (False, "Number of shaders for object '{}' out of bounds. Must be between {} and {}, found={}".format(object.name, 0, MDCShader.maxShaders, materialNamesLen)  )
+
+            if materialNamesLen <= 0:
+                return (False, "Could not find material for object '{}'.".format(object.name))
+
+            if materialNamesLen > MDCShader.maxShaders:
+                return (False, "Number of shaders for object '{}' out of bounds. Must be between {} and {}, found={}".format(object.name, 0, MDCShader.maxShaders, materialNamesLen))
 
         return (True, "SUCCESS")
 
