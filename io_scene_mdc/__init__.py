@@ -86,8 +86,11 @@ class ImportMDC(bpy.types.Operator, ImportHelper):
 
         errMsg = MDCImport().run(importOptions)
         if errMsg != None:
+            self.report({'ERROR'}, "MDCImport error: " + errMsg)
             print("MDCImport error: " + errMsg)
             return {'CANCELLED'}
+
+        print("MDCImport ok.")
 
         return {'FINISHED'}
 
@@ -138,8 +141,11 @@ class ExportMDC(bpy.types.Operator, ExportHelper):
 
         errMsg = MDCExport().run(exportOptions)
         if errMsg != None:
+            self.report({'ERROR'}, "MDCExport error: " + errMsg)
             print("MDCExport error: " + errMsg)
             return {'CANCELLED'}
+
+        print("MDCExport ok.")
 
         return {'FINISHED'}
 
