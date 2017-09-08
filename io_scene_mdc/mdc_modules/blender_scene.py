@@ -85,6 +85,23 @@ class BlenderObject:
 
                 uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
 
+        # if not every vertex is mapped, map them to origin and print a warning
+        for vertexIndex in range(0, len(uvMapQueue)):
+
+            vertexMapping = uvMapQueue[vertexIndex]
+
+            if vertexMapping == None:
+
+                uvMapQueue[vertexIndex] = []
+
+                faceNum = -1 # faceNum will not be used
+                uvCoordinates = (0, 0)
+                uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
+
+                print("MDCExport Warning: found vertex but no uv mapping." \
+                      " Object name '" + str(blenderObject.name) + "'," \
+                      " Vertex Index '" + str(vertexIndex) + "'." \
+                      " Setting mapping to (0, 0).")
 
         for vertexIndex, vertexMappings in enumerate(uvMapQueue):
 
@@ -123,7 +140,8 @@ class BlenderObject:
                     if uvMap[j] == uvCoords:
 
                         if uvMapIndexFound == True:
-                            print("Multiple uv indexes, this shouldn't happen.")
+                            print("MDCExport Info: multiple uv indexes, this " \
+                                  "should not happen.")
 
                         uvMapIndexFound = True
                         uvMapIndex = j
