@@ -19,9 +19,7 @@
 # Module: blender_scene.py
 # Description: read/write blender scene via Blender API.
 
-# TODO
-# - this whole thing needs to be cleaned up
-# - BlenderNormal class
+# TODO restruct
 
 import bpy
 import mathutils
@@ -34,7 +32,7 @@ from .options import ImportOptions, ExportOptions
 ================================================================================
 BlenderObject
 
-Description: resembles mdc surface data mainly.
+Description: maps mdc surface data mainly.
 ================================================================================
 '''
 
@@ -45,16 +43,245 @@ class BlenderObject:
         self.name = name
         self.verts = []              # numFrames * numVerts
         self.normals = []            # numFrames * numVerts
-        self.uvMap = []              # numVerts
         self.faces = []
+        self.uvMap = []              # numVerts
         self.materialNames = []
+
+    # can only be called if verts, normals, and faces have been read already
+    def readUVMap(mesh, blenderObject):
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+        uvLayer = mesh.uv_layers.active
+
+        if uvLayer == None:
+            return None
+
+        if len(mesh.uv_layers) > 1:
+            print("MDCExport Info: multiple uv layers found, using active layer.")
+
+        uvMap = []
+        uvMapQueue = []
+        newVertexCount = 0
+
+        for i in range(0, len(mesh.vertices)):
+            uvMap.append(None)
+            uvMapQueue.append(None)
+
+        # prepare uvMapQueue
+        # this is to handle 1 to many mappings of a vertex to the uvMap
+        for polygon in mesh.polygons:
+
+            faceNum = polygon.index
+
+            for loopIndex in polygon.loop_indices:
+
+                loop = mesh.loops[loopIndex]
+
+                vertexIndex = loop.vertex_index
+                uvCoordinates = uvLayer.data[loop.index].uv
+
+                if uvMapQueue[vertexIndex] == None:
+                    uvMapQueue[vertexIndex] = []
+
+                uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
+
+
+        for vertexIndex, vertexMappings in enumerate(uvMapQueue):
+
+            # split vertex by different uv mapping
+            splitQueue = []
+
+            for mapping in vertexMappings:
+
+                faceNum = mapping[0]
+                uvCoords = mapping[1]
+
+                if uvMap[vertexIndex] == None:
+
+                    uvMap[vertexIndex] = uvCoords
+
+                else:
+
+                    if uvMap[vertexIndex] != uvCoords:
+                        splitQueue.append(mapping)
+
+            # process splitQueue, create new verts and faces if needed
+            originalUvMapLen = len(uvMap) - 1
+
+            for splitQueueItem in splitQueue:
+
+                uvCoords = splitQueueItem[1]
+
+                # find out if we need to create a new vertex
+
+                j = len(uvMap) - 1
+                uvMapIndex = vertexIndex
+                uvMapIndexFound = False
+
+                while originalUvMapLen < j:
+
+                    if uvMap[j] == uvCoords:
+
+                        if uvMapIndexFound == True:
+                            print("Multiple uv indexes, this shouldn't happen.")
+
+                        uvMapIndexFound = True
+                        uvMapIndex = j
+
+                    j -= 1
+
+                # modify verts and normals (simply append)
+                if uvMapIndexFound == False:
+
+                    uvMap.append(uvCoords)
+                    uvMapIndex = len(uvMap) - 1
+                    newVertexCount += 1
+
+                    for frameNum in range(0, len(blenderObject.verts)):
+
+                        frameVert = blenderObject.verts[frameNum][vertexIndex]
+                        frameNormal = blenderObject.normals[frameNum][vertexIndex]
+
+                        blenderObject.verts[frameNum].append(frameVert)
+                        blenderObject.normals[frameNum].append(frameNormal)
+
+                # modify face indexes to match new vertex
+                faceNum = splitQueueItem[0]
+                face = blenderObject.faces[faceNum]
+                oldVertexNum = vertexIndex
+                newVertexNum = uvMapIndex
+
+                if face[0] == oldVertexNum:
+                    newFace = (newVertexNum, face[1], face[2])
+                    blenderObject.faces[faceNum] = newFace
+                elif face[1] == oldVertexNum:
+                    newFace = (face[0], newVertexNum, face[2])
+                    blenderObject.faces[faceNum] = newFace
+                else:
+                    newFace = (face[0], face[1], newVertexNum)
+                    blenderObject.faces[faceNum] = newFace
+
+        if newVertexCount > 0:
+            print("MDCExport Info: new vertices added to output .mdc for object: '" \
+                  + str(blenderObject.name) + \
+                  "', count=" + str(newVertexCount))
+
+        return uvMap
+
+
+    def read(object, normalObjects, numFrames):
+
+        blenderObject = BlenderObject(object.name)
+
+        # prepare meshes
+        bpy.context.scene.objects.active = object
+        bpy.ops.object.modifier_add(type='TRIANGULATE')
+
+        meshes = []
+        for i in range(0, numFrames):
+
+            bpy.context.scene.frame_set(i)
+            mesh = object.to_mesh(bpy.context.scene, True, 'PREVIEW')
+            meshes.append(mesh)
+
+        # verts, normals
+        invalidNormals = set() # temp fix, probably Blender API update required
+        for i in range(0, numFrames):
+
+            bpy.context.scene.frame_set(i)
+
+            frameVerts = []
+            frameNormals = []
+
+            mesh = meshes[i]
+
+            for vert in mesh.vertices:
+
+                globalVert = object.matrix_world * vert.co
+                frameVerts.append(globalVert)
+
+                globalNormal = object.matrix_world * vert.normal
+                globalNormal.normalize()
+                frameNormals.append(globalNormal)
+
+            # make an extra run for the user modelled vertex normals
+            for normalObject in normalObjects:
+
+                if normalObject.parent.name != object.name:
+                    continue
+
+                matrix_basis = normalObject.matrix_basis
+
+                x = matrix_basis[0][2]
+                y = matrix_basis[1][2]
+                z = matrix_basis[2][2]
+                normal = mathutils.Vector((x, y, z))
+                normal.normalize()
+
+                vertexIndex = normalObject.parent_vertices[0]
+
+                # the user could have done a 'Remove Doubles', which leads to
+                # object.parent_vertices[0] still having the old index, but
+                # is no longer valid. Blender does not seem to clear \
+                # parent-child relationship, so add a temp fix which checks \
+                # if the vertex parent is still in bound and print a warning
+                if vertexIndex < 0 or vertexIndex >= len(mesh.vertices):
+                    invalidNormals.add(normalObject)
+                else:
+                    frameNormals[vertexIndex] = normal
+
+            blenderObject.verts.append(frameVerts)
+            blenderObject.normals.append(frameNormals)
+
+        if len(invalidNormals) > 0:
+            print("MDCExport Warning: some vertex normal objects no longer "\
+                   "point to a valid vertex parent. This can be because of a "\
+                   "previous 'Remove Doubles'. Make sure to check your vertex "\
+                   "normal objects after export. No guarantee that this export "\
+                   "will be successful. Some normals might be incorrect. "\
+                   "Printing normal object names:")
+            for invalidNormal in invalidNormals:
+                print(invalidNormal.name)
+
+
+        # assign first frame mesh for rest of operation
+        mesh = meshes[0]
+
+        # faces
+        for face in mesh.polygons:
+
+            faceIndexes = []
+
+            for index in face.vertices:
+
+                faceIndexes.append(index)
+
+            blenderObject.faces.append(faceIndexes)
+
+        # uvMap
+        blenderObject.uvMap = BlenderObject.readUVMap(mesh, blenderObject)
+
+        # materialNames
+        for slot in object.material_slots:
+
+            blenderObject.materialNames.append(slot.name)
+
+        # clean up
+        bpy.ops.object.modifier_remove(modifier=object.modifiers[-1].name)
+
+        for i in range(0, numFrames):
+
+            bpy.data.meshes.remove(meshes[i])
+
+        return blenderObject
+
 
 '''
 ================================================================================
 BlenderTag
 
-Description: resembles mdc tag. Tags are modelled by the user via an empty of
-type 'arrow'.
+Description: maps mdc tag. Tags are modelled by the user via an empty of type
+'arrow'.
 ================================================================================
 '''
 
@@ -96,12 +323,14 @@ class BlenderTag:
 ================================================================================
 BlenderScene
 
-Description: resembles converted mdc data in blender. Holds references to all
-data needed to read and write a scene via the blender API.
+Description: maps converted mdc data in blender. Holds references to all data
+needed to read and write a scene via the blender API.
 ================================================================================
 '''
 
 class BlenderScene:
+
+    frameName = "(from Blender)"
 
     def __init__(self, name):
 
@@ -115,6 +344,10 @@ class BlenderScene:
 
     def read(exportOptions):
 
+        # settings to restore after operation
+        restoreFrame = bpy.context.scene.frame_current
+
+        # name
         sceneName = bpy.context.scene.name
         blenderScene = BlenderScene(sceneName)
 
@@ -122,10 +355,10 @@ class BlenderScene:
         blenderScene.numFrames = bpy.context.scene.frame_end + 1 \
                                  - bpy.context.scene.frame_start \
 
-        # frameNames, frameOrigins - TODO for now hardcoded
+        # frameNames, frameOrigins
         for i in range(0, blenderScene.numFrames):
 
-            blenderScene.frameNames.append("(from Blender)")
+            blenderScene.frameNames.append(BlenderScene.frameName)
             blenderScene.frameOrigins.append((0, 0, 0))
 
         # choose tags, objects and normalObjects for export
@@ -134,36 +367,23 @@ class BlenderScene:
         normalObjects = []
 
         if exportOptions.selection == True:
-
-            for o in bpy.context.selected_objects:
-
-                if o.type == 'MESH':
-                    objects.append(o)
-
-                if o.type == 'EMPTY' and o.empty_draw_type == 'ARROWS':
-                    tags.append(o)
-
-                if exportOptions.normalObjects == True and \
-                    o.type == 'EMPTY' and \
-                    o.empty_draw_type == 'SINGLE_ARROW' and \
-                    o.parent_type == 'VERTEX':
-                       normalObjects.append(o)
-
+            objectList = bpy.context.selected_objects
         else:
+            objectList = bpy.context.scene.objects
 
-            for o in bpy.context.scene.objects:
+        for object in objectList:
 
-                if o.type == 'MESH':
-                    objects.append(o)
+            if object.type == 'EMPTY' and object.empty_draw_type == 'ARROWS':
+                tags.append(object)
 
-                if o.type == 'EMPTY' and o.empty_draw_type == 'ARROWS':
-                    tags.append(o)
+            if object.type == 'MESH':
+                objects.append(object)
 
-                if exportOptions.normalObjects == True and \
-                    o.type == 'EMPTY' and \
-                    o.empty_draw_type == 'SINGLE_ARROW' and \
-                    o.parent_type == 'VERTEX':
-                       normalObjects.append(o)
+            if exportOptions.normalObjects == True and \
+                object.type == 'EMPTY' and \
+                object.empty_draw_type == 'SINGLE_ARROW' and \
+                object.parent_type == 'VERTEX':
+                   normalObjects.append(object)
 
         # tags
         for tag in tags:
@@ -178,207 +398,23 @@ class BlenderScene:
 
             blenderScene.tags.append(blenderTag)
 
-        bpy.context.scene.frame_set(0) # TODO is this needed?
-
         # objects
         for object in objects:
 
-            blenderObject = BlenderObject(object.name)
-
-            # get a triangulated mesh
-            bpy.context.scene.objects.active = object
-            bpy.ops.object.modifier_add(type='TRIANGULATE')
-
-            # verts, normals
-            for i in range(0, blenderScene.numFrames):
-
-                bpy.context.scene.frame_set(i)
-                mesh = object.to_mesh(bpy.context.scene, True, 'PREVIEW')
-
-                frameVerts = []
-                frameNormals = []
-
-                for vert in mesh.vertices:
-
-                    globalVert = object.matrix_world * vert.co
-                    frameVerts.append(globalVert)
-
-                    globalNormal = object.matrix_world * vert.normal
-                    globalNormal.normalize()
-                    frameNormals.append(globalNormal)
-
-                # make an extra run for the user modelled vertex normals
-                for normalObject in normalObjects:
-
-                    if normalObject.parent.name != object.name:
-                        continue
-
-                    matrix_basis = normalObject.matrix_basis
-
-                    x = matrix_basis[0][2]
-                    y = matrix_basis[1][2]
-                    z = matrix_basis[2][2]
-                    normal = mathutils.Vector((x, y, z))
-                    normal.normalize()
-
-                    vertexIndex = normalObject.parent_vertices[0]
-                    frameNormals[vertexIndex] = normal
-
-                blenderObject.verts.append(frameVerts)
-                blenderObject.normals.append(frameNormals)
-
-                bpy.data.meshes.remove(mesh)
-
-
-            # get a new mesh
-            bpy.context.scene.frame_set(0) # TODO is this needed?
-            mesh = object.to_mesh(bpy.context.scene, True, 'PREVIEW')
-
-            # faces
-            for face in mesh.polygons:
-
-                faceIndexes = []
-
-                for index in face.vertices:
-
-                    faceIndexes.append(index)
-
-                blenderObject.faces.append(faceIndexes)
-
-            # uvMap
-            bpy.ops.object.mode_set(mode='OBJECT')
-
-            uv_layer = mesh.uv_layers.active
-
-            if uv_layer == None:
-                uvMap = None
-
-            else:
-
-                uvMap = []
-                uvMapQueue = []
-
-                newVertexCount = 0
-
-                for i in range(0, len(mesh.vertices)):
-                    uvMap.append(None)
-                    uvMapQueue.append(None)
-
-                # prepare uvMapQueue
-                # this is to handle 1 to many mappings of a vertex to the uvMap
-                for polygon in mesh.polygons:
-
-                    faceNum = polygon.index
-
-                    for loopIndex in polygon.loop_indices:
-
-                        loop = mesh.loops[loopIndex]
-
-                        vertexIndex = loop.vertex_index
-                        uvCoordinates = uv_layer.data[loop.index].uv
-
-                        if uvMapQueue[vertexIndex] == None:
-                            uvMapQueue[vertexIndex] = []
-
-                        uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
-
-
-                for vertexIndex, vertexMappings in enumerate(uvMapQueue):
-
-                    # split vertex by different uv mapping
-                    splitQueue = []
-
-                    for mapping in vertexMappings:
-
-                        faceNum = mapping[0]
-                        uvCoords = mapping[1]
-
-                        if uvMap[vertexIndex] == None:
-
-                            uvMap[vertexIndex] = uvCoords
-
-                        else:
-
-                            if uvMap[vertexIndex] != uvCoords:
-                                splitQueue.append(mapping)
-
-                    # process splitQueue, create new verts and faces if needed
-                    originalUvMapLen = len(uvMap) - 1
-
-                    for splitQueueItem in splitQueue:
-
-                        uvCoords = splitQueueItem[1]
-
-                        # find out if we need to create a new vertex
-
-                        j = len(uvMap) - 1
-                        uvMapIndex = vertexIndex
-                        uvMapIndexFound = False
-
-                        while originalUvMapLen < j:
-
-                            if uvMap[j] == uvCoords:
-
-                                if uvMapIndexFound == True:
-                                    print("multiple uv indexes, this shouldn't happen")
-
-                                uvMapIndexFound = True
-                                uvMapIndex = j
-                                newVertexCount += 1
-
-                            j -= 1
-
-                        # modify verts and normals (simply append)
-                        if uvMapIndexFound == False:
-
-                            uvMap.append(uvCoords)
-                            uvMapIndex = len(uvMap) - 1
-
-                            for frameNum in range(0, blenderScene.numFrames):
-
-                                frameVert = blenderObject.verts[frameNum][vertexIndex]
-                                frameNormal = blenderObject.normals[frameNum][vertexIndex]
-
-                                blenderObject.verts[frameNum].append(frameVert)
-                                blenderObject.normals[frameNum].append(frameNormal)
-
-                        # modify face indexes to match new vertex
-                        faceNum = splitQueueItem[0]
-                        face = blenderObject.faces[faceNum]
-                        oldVertexNum = vertexIndex
-                        newVertexNum = uvMapIndex
-
-                        if face[0] == oldVertexNum:
-                            newFace = (newVertexNum, face[1], face[2])
-                            blenderObject.faces[faceNum] = newFace
-                        elif face[1] == oldVertexNum:
-                            newFace = (face[0], newVertexNum, face[2])
-                            blenderObject.faces[faceNum] = newFace
-                        else:
-                            newFace = (face[0], face[1], newVertexNum)
-                            blenderObject.faces[faceNum] = newFace
-
-                if newVertexCount > 0:
-                    print("MDCExport Info: new vertices added to output .mdc for object=: " \
-                          + str(blenderObject.name) + \
-                          ", count=" + str(newVertexCount))
-
-            blenderObject.uvMap = uvMap
-
-            # materialNames
-            for slot in object.material_slots:
-
-                blenderObject.materialNames.append(slot.name)
-
-            # remove Triangulate modifier
-            bpy.ops.object.modifier_remove(modifier=object.modifiers[-1].name)
-
+            blenderObject = BlenderObject.read(object, normalObjects, \
+                                               blenderScene.numFrames)
             blenderScene.objects.append(blenderObject)
+
+        # restore settings
+        bpy.context.scene.frame_set(restoreFrame)
 
         return blenderScene
 
 
     def write(self, importOptions):
+
+        # settings to restore after operation
+        restoreScene = bpy.context.scene.name
 
         if importOptions.toNewScene == True:
             bpy.ops.scene.new()
@@ -430,7 +466,6 @@ class BlenderScene:
                 mesh.shape_keys.eval_time = 10.0 * (j + 1)
                 mesh.shape_keys.keyframe_insert('eval_time', frame=j)
 
-            # update mesh with new data
             mesh.update()
 
             # uvMap
@@ -484,11 +519,12 @@ class BlenderScene:
             mesh.validate()
 
             # normals
-            # add first frame
-            # 'blender', "blenderObject' 'mdcObject'
+            if importOptions.normals == "blender":
+                pass # blender will calculate the normals
 
-            if importOptions.normals == "mdcObject":
+            elif importOptions.normals == "mdcObject":
 
+                # add first frame
                 verts = self.objects[i].verts[0]
                 normals = self.objects[i].normals[0]
 
@@ -498,8 +534,6 @@ class BlenderScene:
 
                     vert = verts[j]
                     normal = normals[j]
-
-                    # TODO encodeLocRot für BlenderNormal
 
                     b3 = mathutils.Vector(normal)
 
@@ -525,18 +559,13 @@ class BlenderScene:
                     bpy.context.scene.objects.link(normalObject)
                     normalObject.name = 'vertex_normal'
                     normalObject.empty_draw_type = 'SINGLE_ARROW'
-                    '''
-                    bpy.ops.object.add(type='EMPTY')
-                    normalObject = bpy.context.object
-                    normalObject.name = 'vertex_normal'
-                    normalObject.empty_draw_type = 'SINGLE_ARROW'
-                    '''
 
                     # parent object to vertex
                     normalObject.parent = object
                     normalObject.parent_type = 'VERTEX'
                     normalObject.parent_vertices[0] = j
 
+                    # add location and rotation
                     normalObject.matrix_basis = basis
 
                     normalObject.keyframe_insert('location', \
@@ -546,11 +575,10 @@ class BlenderScene:
                                               frame=0, \
                                               group='LocRot')
 
+                    # move to another layer if needed
                     layer = [False]*20
                     layer[int(importOptions.normalsLayer) - 1] = True
                     normalObject.layers = layer
-
-
 
                     addedNormals.append(normalObject)
 
@@ -564,8 +592,6 @@ class BlenderScene:
 
                         vert = verts[k]
                         normal = normals[k]
-
-                        # TODO locRot func
 
                         b3 = mathutils.Vector(normal)
 
@@ -597,9 +623,9 @@ class BlenderScene:
                                                   frame=j, \
                                                   group='LocRot')
 
-            # TODO
-            #else if importOptions.normals == "blenderObject":
-
+            # possible other future options
+            else:
+                pass
 
         # tags
         if len(self.tags) > 0:
@@ -617,15 +643,6 @@ class BlenderScene:
                 tagObject.empty_draw_type = 'ARROWS'
                 tagObject.rotation_mode = 'XYZ'
                 tagObject.matrix_basis = tag.locRot[0]
-
-                '''
-                bpy.ops.object.add(type='EMPTY')
-                tagObject = bpy.context.object
-                tagObject.name = tag.name
-                tagObject.empty_draw_type = 'ARROWS'
-                tagObject.rotation_mode = 'XYZ'
-                tagObject.matrix_basis = tag.locRot[0]
-                '''
 
                 tagObject.keyframe_insert('location', \
                                           frame=0, \
@@ -659,13 +676,13 @@ class BlenderScene:
 
         # TODO frameOrigins
 
+        # some final settings
         if importOptions.toNewScene == True:
 
-            # name
             bpy.context.scene.name = self.name
-
-            # some final settings
             bpy.context.scene.game_settings.material_mode = 'GLSL'
             bpy.ops.object.lamp_add(type='HEMI')
+            bpy.context.scene.frame_set(0)
 
-        bpy.context.scene.frame_set(0)
+        # restore settings
+        bpy.context.screen.scene = bpy.data.scenes[restoreScene]

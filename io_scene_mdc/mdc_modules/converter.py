@@ -19,10 +19,6 @@
 # Module: converter.py
 # Description: converts between mdc_file and blender_scene.
 
-# TODO remove mathutils dependency
-
-import mathutils
-
 from .mdc_file import *
 from .blender_scene import *
 
@@ -363,10 +359,9 @@ class Converter:
 
             frameName = Util.cleanup_string(mdcFile.frames[i].name)
             blenderScene.frameNames.append(frameName)
-            blenderScene.frameOrigins.append(mathutils.Vector(( \
-                                             mdcFile.frames[i].localOrigin[0], \
-                                             mdcFile.frames[i].localOrigin[1], \
-                                             mdcFile.frames[i].localOrigin[2])))
+            blenderScene.frameOrigins.append((mdcFile.frames[i].localOrigin[0], \
+                                              mdcFile.frames[i].localOrigin[1], \
+                                              mdcFile.frames[i].localOrigin[2]))
 
         # tags
         for i in range(0, mdcFile.header.numTags):
@@ -425,24 +420,19 @@ class Converter:
 
                         # calc v_delta
                         xyznc = surface.xyznCompressed[compFrameIndex][k]
-                        v_delta_x, v_delta_y, v_delta_z, \
-                        n_delta_x, n_delta_y, n_delta_z \
+                        v_delta_x, v_delta_y, v_delta_z, nx, ny, nz \
                         = MDCXyznCompressed.decode(xyznc.ofsVec)
 
                         # v = v_localOrigin + v_base + v_delta
                         x = mdcFile.frames[j].localOrigin[0] + v_base_x + v_delta_x
                         y = mdcFile.frames[j].localOrigin[1] + v_base_y + v_delta_y
                         z = mdcFile.frames[j].localOrigin[2] + v_base_z + v_delta_z
-                        v = mathutils.Vector((x , y, z))
+                        v = (x , y, z)
 
                         frameVerts.append(v)
 
                         # normal
-                        nx = n_delta_x
-                        ny = n_delta_y
-                        nz = n_delta_z
-                        n = (nx, ny, nz)
-                        frameNormals.append(n)
+                        frameNormals.append((nx, ny, nz))
 
                 # frame is not compressed
                 else:
@@ -453,7 +443,7 @@ class Converter:
                         xyzn = surface.xyzns[baseFrameIndex][k]
 
                         v_base_x, v_base_y, v_base_z, \
-                        n_base_x, n_base_y, n_base_z, \
+                        nx, ny, nz, \
                         = MDCXyzn.decode(xyzn.xyz[0], xyzn.xyz[1], xyzn.xyz[2], \
                                          xyzn.normal)
 
@@ -466,13 +456,12 @@ class Converter:
                         x = mdcFile.frames[j].localOrigin[0] + v_base_x + v_delta_x
                         y = mdcFile.frames[j].localOrigin[1] + v_base_y + v_delta_y
                         z = mdcFile.frames[j].localOrigin[2] + v_base_z + v_delta_z
-                        v = mathutils.Vector((x , y, z))
+                        v = (x , y, z)
 
                         frameVerts.append(v)
 
                         # normal
-                        n = (n_base_x, n_base_y, n_base_z)
-                        frameNormals.append(n)
+                        frameNormals.append((nx, ny, nz))
 
                 blenderObject.verts.append(frameVerts)
                 blenderObject.normals.append(frameNormals)
