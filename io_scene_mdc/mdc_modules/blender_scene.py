@@ -47,10 +47,11 @@ class BlenderObject:
         self.uvMap = []              # numVerts
         self.materialNames = []
 
-    # can only be called if verts, normals, and faces have been read already
-    def readUVMap(mesh, blenderObject):
+
+    def readUVMap(mesh, verts, normals, faces):
 
         bpy.ops.object.mode_set(mode='OBJECT')
+
         uvLayer = mesh.uv_layers.active
 
         if uvLayer == None:
@@ -60,15 +61,19 @@ class BlenderObject:
             print("MDCExport Info: multiple uv layers found, using active layer.")
 
         uvMap = []
-        uvMapQueue = []
-        newVertexCount = 0
+        mappedVerts = []
 
         for i in range(0, len(mesh.vertices)):
             uvMap.append(None)
-            uvMapQueue.append(None)
+            mappedVerts.append(None)
 
-        # prepare uvMapQueue
-        # this is to handle 1 to many mappings of a vertex to the uvMap
+        originalUvMapLen = len(uvMap)
+
+        # for each polygon check uv mapping of the vertices
+        # no vertex should map to two different positions in the uvMap
+        # if so, duplicate the vertex and modify the related face
+        # this is because mdc supports only 1 to 1 mapping of each vertex
+        # to uvMap
         for polygon in mesh.polygons:
 
             faceNum = polygon.index
@@ -80,109 +85,101 @@ class BlenderObject:
                 vertexIndex = loop.vertex_index
                 uvCoordinates = uvLayer.data[loop.index].uv
 
-                if uvMapQueue[vertexIndex] == None:
-                    uvMapQueue[vertexIndex] = []
-
-                uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
-
-        # if not every vertex is mapped, map them to origin and print a warning
-        for vertexIndex in range(0, len(uvMapQueue)):
-
-            vertexMapping = uvMapQueue[vertexIndex]
-
-            if vertexMapping == None:
-
-                uvMapQueue[vertexIndex] = []
-
-                faceNum = -1 # faceNum will not be used
-                uvCoordinates = (0, 0)
-                uvMapQueue[vertexIndex].append((faceNum, uvCoordinates))
-
-                print("MDCExport Warning: found vertex but no uv mapping." \
-                      " Object name '" + str(blenderObject.name) + "'," \
-                      " Vertex Index '" + str(vertexIndex) + "'." \
-                      " Setting mapping to (0, 0).")
-
-        for vertexIndex, vertexMappings in enumerate(uvMapQueue):
-
-            # split vertex by different uv mapping
-            splitQueue = []
-
-            for mapping in vertexMappings:
-
-                faceNum = mapping[0]
-                uvCoords = mapping[1]
-
                 if uvMap[vertexIndex] == None:
 
-                    uvMap[vertexIndex] = uvCoords
+                    uvMap[vertexIndex] = uvCoordinates
+
+                    uvMapIndex = vertexIndex
+                    mappedVerts[vertexIndex] = []
+                    mappedVerts[vertexIndex].append(uvMapIndex)
 
                 else:
 
-                    if uvMap[vertexIndex] != uvCoords:
-                        splitQueue.append(mapping)
+                    uvMapIndex = -1
+                    mappings = mappedVerts[vertexIndex]
 
-            # process splitQueue, create new verts and faces if needed
-            originalUvMapLen = len(uvMap) - 1
+                    for i in range (0, len(mappings)):
 
-            for splitQueueItem in splitQueue:
+                        index = mappings[i]
+                        thisUvCoordinates = uvMap[index]
 
-                uvCoords = splitQueueItem[1]
+                        if thisUvCoordinates == uvCoordinates:
 
-                # find out if we need to create a new vertex
+                            uvMapIndex = index
+                            break
 
-                j = len(uvMap) - 1
-                uvMapIndex = vertexIndex
-                uvMapIndexFound = False
+                    # create a new vert
+                    if uvMapIndex == -1:
 
-                while originalUvMapLen < j:
+                        uvMap.append(uvCoordinates)
 
-                    if uvMap[j] == uvCoords:
+                        uvMapIndex = len(uvMap) - 1
 
-                        if uvMapIndexFound == True:
-                            print("MDCExport Info: multiple uv indexes, this " \
-                                  "should not happen.")
+                        mappedVerts[vertexIndex].append(uvMapIndex)
 
-                        uvMapIndexFound = True
-                        uvMapIndex = j
+                        for frameNum in range(0, len(verts)):
 
-                    j -= 1
+                            # copy original location and normal to new index
+                            frameVert = verts[frameNum][vertexIndex]
+                            frameNormal = normals[frameNum][vertexIndex]
 
-                # modify verts and normals (simply append)
-                if uvMapIndexFound == False:
+                            verts[frameNum].append(frameVert)
+                            normals[frameNum].append(frameNormal)
 
-                    uvMap.append(uvCoords)
-                    uvMapIndex = len(uvMap) - 1
-                    newVertexCount += 1
+                    # vert is a first mapped one
+                    elif uvMapIndex < originalUvMapLen:
 
-                    for frameNum in range(0, len(blenderObject.verts)):
+                        uvMapIndex = vertexIndex
 
-                        frameVert = blenderObject.verts[frameNum][vertexIndex]
-                        frameNormal = blenderObject.normals[frameNum][vertexIndex]
+                    # vert is not a first mapped one
+                    else:
 
-                        blenderObject.verts[frameNum].append(frameVert)
-                        blenderObject.normals[frameNum].append(frameNormal)
+                        pass
 
-                # modify face indexes to match new vertex
-                faceNum = splitQueueItem[0]
-                face = blenderObject.faces[faceNum]
-                oldVertexNum = vertexIndex
-                newVertexNum = uvMapIndex
+                    # modify faces
+                    oldVertexNum = vertexIndex
+                    newVertexNum = uvMapIndex
+                    if oldVertexNum != newVertexNum:
 
-                if face[0] == oldVertexNum:
-                    newFace = (newVertexNum, face[1], face[2])
-                    blenderObject.faces[faceNum] = newFace
-                elif face[1] == oldVertexNum:
-                    newFace = (face[0], newVertexNum, face[2])
-                    blenderObject.faces[faceNum] = newFace
-                else:
-                    newFace = (face[0], face[1], newVertexNum)
-                    blenderObject.faces[faceNum] = newFace
+                        face = faces[faceNum]
 
+                        if face[0] == oldVertexNum:
+                            newFace = (newVertexNum, face[1], face[2])
+                            faces[faceNum] = newFace
+                        elif face[1] == oldVertexNum:
+                            newFace = (face[0], newVertexNum, face[2])
+                            faces[faceNum] = newFace
+                        else:
+                            newFace = (face[0], face[1], newVertexNum)
+                            faces[faceNum] = newFace
+
+        newVertexCount = len(uvMap) - originalUvMapLen
         if newVertexCount > 0:
             print("MDCExport Info: new vertices added to output .mdc for object: '" \
-                  + str(blenderObject.name) + \
+                  + str(mesh.name) + \
                   "', count=" + str(newVertexCount))
+
+        for i in range(0, len(uvMap)):
+
+            # this is ugly, isn't there a better way than casting?
+            # the converter screws up the uv map data otherwise cause it
+            # cannot handle Vectors from mathutils, and this mathutils
+            # dependency should imo stay removed in the converter, putting
+            # it into the converter would only further down the line would make
+            # this neccessary for mdc_file, cause mdc_file at some point touches
+            # Vectors during write (this can crash blender, at least mess up uvs)
+            uvTupelCast = None
+
+            if uvMap[i] == None:
+                uvTupelCast = (0, 0)
+                print("MDCExport Warning: not all vertices uv mapped. Found " \
+                      "vertex '" + str(i) + "', for mesh '" \
+                      + str(mesh.name) + "'. Setting to (0, 0) in uvMap.")
+            else:
+                uvCoords = uvMap[i]
+                uvTupelCast = (uvCoords[0], uvCoords[1])
+
+            uvMap[i] = uvTupelCast
 
         return uvMap
 
@@ -277,7 +274,10 @@ class BlenderObject:
             blenderObject.faces.append(faceIndexes)
 
         # uvMap
-        blenderObject.uvMap = BlenderObject.readUVMap(mesh, blenderObject)
+        blenderObject.uvMap = BlenderObject.readUVMap(mesh, \
+                                                      blenderObject.verts, \
+                                                      blenderObject.normals, \
+                                                      blenderObject.faces)
 
         # materialNames
         for slot in object.material_slots:
@@ -644,6 +644,9 @@ class BlenderScene:
             # possible other future options
             else:
                 pass
+
+            # set smooth shading as default
+            bpy.ops.object.shade_smooth()
 
         # tags
         if len(self.tags) > 0:
