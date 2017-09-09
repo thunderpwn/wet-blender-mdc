@@ -126,16 +126,6 @@ class BlenderObject:
                             verts[frameNum].append(frameVert)
                             normals[frameNum].append(frameNormal)
 
-                    # vert is a first mapped one
-                    elif uvMapIndex < originalUvMapLen:
-
-                        uvMapIndex = vertexIndex
-
-                    # vert is not a first mapped one
-                    else:
-
-                        pass
-
                     # modify faces
                     oldVertexNum = vertexIndex
                     newVertexNum = uvMapIndex
