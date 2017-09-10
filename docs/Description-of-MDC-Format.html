@@ -1,0 +1,559 @@
+<p>&nbsp;Document last updated 2017 Sep 10.&nbsp;</p>
+<h2>Disclaimer:</h2>
+<p>No claims as to the accuracy of the information provided within. I am not affiliated with Id Software. This document is heavily based on <a href="https://www.icculus.org/homepages/phaethon/q3a/formats/md3format.html">Description of MD3 Format (2011 Jul 11) - icculus.org</a>. Most information about MDC was gathered from browsing the <a href="https://github.com/id-Software/Enemy-Territory">Wolfenstein: Enemy Territory GPL Source Release</a> and a document created by Wolfgang Prinz called <a href="https://gamespy-archives.quaddicted.com/sites/www.planetwolfenstein.com/themdcfile/MDC_File_Format.pdf">The MDC File Format</a>.</p>
+<h1>Introduction:</h1>
+<p>The MDC file format is a 3D model format used in games such as Return to Castle Wolfenstein or Wolfenstein: Enemy Territory and is a successor format of the MD3 file format. It differs from MD3 in that it uses more advanced compression methods on the vertex coordinates and normals.&nbsp;</p>
+<h2>Compression:</h2>
+<p>Vertex coordinates are compressed by dividing frame space into compressed frames and base frames. The base frames still work the same as in MD3, that means absolute vertex coordinates are stored as three short values. Compressed frames on the other hand store just relative values. The values are relative to its baseframe and take up three byte values. This can effectively half an MDC models file size compared to the same data stored in MD3. Compression can only be effective if the animated models vertexes generally do move across small distances per frame.</p>
+<p>The vertex normals are also compressed. The uncompressed normals are stored in a short value. This value consists of a latitude and a longitude value. Together they represent the vertex normal in spherical coordinates. The compressed vertex normals work a bit different. They are precalculated a certain way. No longitude or latitude values are stored. Instead a byte is used to point to an array of 256 precalculated normals. The 256 normals are evenly (more or less) distributed across 3D space, but still fairly precise, considering it is only 256 values stored by a byte.&nbsp;&nbsp;</p>
+<h2>Data type indicator:&nbsp;</h2>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>U8</td>
+<td>char</td>
+<td>8-bit unsigned octet (character).</td>
+</tr>
+<tr>
+<td>S16</td>
+<td>short</td>
+<td>little-endian signed 16-bit integer.</td>
+</tr>
+<tr>
+<td>US16</td>
+<td>short</td>
+<td>little-endian unsigned 16-bit integer.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>int</td>
+<td>little-endian signed 32-bit integer.</td>
+</tr>
+<tr>
+<td>US32</td>
+<td>int</td>
+<td>little-endian unsigned 32-bit integer.</td>
+</tr>
+<tr>
+<td>F32</td>
+<td>float</td>
+<td>IEEE-754 32-bit floating-point.</td>
+</tr>
+<tr>
+<td>VEC3</td>
+<td>vec3_t</td>
+<td>triplet of F32 in sequence (read 4 octets, make float, read 4, make float, read 4, make float), describing a 3-space vector.</td>
+</tr>
+<tr>
+<td>*</td>
+<td>[]</td>
+<td>indicates sequential repeat count (homogenous aggregation, array, vector), as in "U8 * 16" to mean a 16-octet array (i.e. character string).</td>
+</tr>
+<tr>
+<td>-</td>
+<td>&nbsp;</td>
+<td>file/array offset of which to make special note.</td>
+</tr>
+<tr>
+<td>!</td>
+<td>&nbsp;</td>
+<td>aggregate complex data that should be described elsewhere.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h2>MDC:&nbsp;</h2>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>-</td>
+<td>MDC_START</td>
+<td>offset of MDC object. Usually 0, but not guaranteed.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>IDENT</td>
+<td>Magic number. As a string of 4 octets, reads "IDPC".</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>VERSION</td>
+<td>MDC version number, latest known is 2, but use the constant MDC_VERSION</td>
+</tr>
+<tr>
+<td>U8 * <strong>MAX_QPATH</strong></td>
+<td>NAME</td>
+<td>MDC name, usually its pathname in the PK3. ASCII character string, NUL-terminated (C-style). Current value of <strong>MAX_QPATH</strong> is 64.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>FLAGS</td>
+<td>???</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_FRAMES</td>
+<td>Number of Frame objects, with a maximum of <strong>MD3_MAX_FRAMES</strong>. Current value of <strong>MD3_MAX_FRAMES</strong> is 1024.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_TAGS</td>
+<td>Number of Tag objects, with a maximum of <strong>MD3_MAX_TAGS</strong>. Current value of <strong>MD3_MAX_TAGS</strong> is 16.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_SURFACES</td>
+<td>Number of Surface objects, with a maximum of <strong>MD3_MAX_SURFACES</strong>. Current value of <strong>MD3_MAX_SURFACES</strong> is 32.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_SKINS</td>
+<td>Number of Skin objects. I should note that I have not seen an MDC using this particular field for anything; this appears to be an artifact from the Quake 2 MD2 format. Surface objects have their own Shader field.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_FRAMES</td>
+<td>Relative offset from start of MDC object where Frame objects start. The Frame objects are written sequentially, that is, when you read one Frame object, you do not need to seek() for the next object.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_TAGNAMES</td>
+<td>Relative offset from start of MDC where Tagname objects start. Similarly written sequentially.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_TAGS</td>
+<td>Relative offset from start of MDC where Tag objects start. Similarly written sequentially.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_SURFACES</td>
+<td>Relative offset from start of MDC where Surface objects start. Again, written sequentially.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_EOF</td>
+<td>Relative offset from start of MDC to the end of the MDC object. Note there is no offset for Skin objects.</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(<a href="#Frame">Frame</a>)</em></td>
+<td>The array of <a href="#Frame">Frame</a> objects usually starts immediately afterwards, but OFS_FRAMES should be used.</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(Tagname)</em></td>
+<td>The array of <a href="#Tag">Tag</a> objects usually starts immediately after FRAMES, but OFS_TAGNAMES should be used.</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(<a href="#Tag">Tag</a>)</em></td>
+<td>The array of <a href="#Tag">Tag</a> objects usually starts immediately after TAGNAMES, but OFS_TAGS should be used.</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(<a href="#Surface">Surface</a>)</em></td>
+<td>The array of <a href="#Surface">Surface</a> objects usually start after TAGS, but OFS_SURFACES should be used.</td>
+</tr>
+<tr>
+<td>-</td>
+<td>MD3_END</td>
+<td>End of MDC object. Should match MDC_START.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h3>Frame:</h3>
+<p>(member of MDC)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>VEC3</td>
+<td>MIN_BOUNDS</td>
+<td>First corner of the bounding box.</td>
+</tr>
+<tr>
+<td>VEC3</td>
+<td>MAX_BOUNDS</td>
+<td>Second corner of the bounding box.</td>
+</tr>
+<tr>
+<td>VEC3</td>
+<td>LOCAL_ORIGIN</td>
+<td>Local origin, usually (0, 0, 0).</td>
+</tr>
+<tr>
+<td>F32</td>
+<td>RADIUS</td>
+<td>Radius of bounding sphere.</td>
+</tr>
+<tr>
+<td>U8 * 16</td>
+<td>NAME</td>
+<td>Name of Frame. ASCII character string, NUL-terminated (C-style).</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h3>Tagname:</h3>
+<p>(member of MDC)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>U8 * <strong>MAX_QPATH</strong></td>
+<td>NAME</td>
+<td>Name of Tag object. ASCII character string, NUL-terminated (C-style). Current value of <strong>MAX_QPATH</strong> is 64. Tagnames are related to tags (see Tag), but are stored seperately and only once.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h3>Tag:&nbsp;</h3>
+<p>(member of MDC)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>VEC3</td>
+<td>ORIGIN</td>
+<td>Coordinates of Tag object. Scaled by XYZ_SCALE to convert to float. Current XYZ_SCALE value is 1.0 / 64.</td>
+</tr>
+<tr>
+<td>S16 * 3</td>
+<td>ORIENTATION</td>
+<td>Orientation of Tag object. Euler angles stored in pitch, yaw, roll order. Scaled by TAG_ANGLE_SCALE to convert to degrees. Current TAG_ANGLE_SCALE value is 360.0 / 32700.0.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;&nbsp;</p>
+<h3>Surface:&nbsp;</h3>
+<p>(member of MDC)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>-</td>
+<td>SURFACE_START</td>
+<td>Offset relative to start of MDC object.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>IDENT</td>
+<td>Magic number. As a string of 4 octets, reads as version number? Value in unsigned little-endian 0x07000000; as unsigned big-endian 0x00000007.</td>
+</tr>
+<tr>
+<td>U8 * <strong>MAX_QPATH</strong></td>
+<td>NAME</td>
+<td>Name of Surface object. ASCII character string, NUL-terminated (C-style). Current value of <strong>MAX_QPATH</strong> is 64.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>FLAGS</td>
+<td>?</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_COMP_FRAMES</td>
+<td>Number of compressed animation frames. NUM_COMP_FRAMES + NUM_BASE_FRAMES should match NUM_FRAMES in the MDC header. All surfaces in a model should have the same.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_BASE_FRAMES</td>
+<td>Number of base animation frames. NUM_BASE_FRAMES + NUM_COMP_FRAMES should match NUM_FRAMES in the MDC header. All surfaces in a model should have the same.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_SHADERS</td>
+<td>Number of Shader objects defined in this Surface, with a limit of <strong>MD3_MAX_SHADERS</strong>. Current value of <strong>MD3_MAX_SHADERS</strong> is 256.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_VERTS</td>
+<td>Number of Vertex objects defined in this Surface, up to <strong>MD3_MAX_VERTS</strong>. Current value of <strong>MD3_MAX_VERTS</strong> is 4096.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>NUM_TRIANGLES</td>
+<td>Number of Triangle objects defined in this Surface, maximum of <strong>MD3_MAX_TRIANGLES</strong>. Current value of <strong>MD3_MAX_TRIANGLES</strong> is 8192.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_TRIANGLES</td>
+<td>Relative offset from SURFACE_START where the list of Triangle objects starts.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_SHADERS</td>
+<td>Relative offset from SURFACE_START where the list of Shader objects starts.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_ST</td>
+<td>Relative offset from SURFACE_START where the list of St objects (Texture Coordinates, S-T vertices) starts.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_XYZN</td>
+<td>Relative offset from SURFACE_START where the list of base Vertex objects and their normals (X-Y-Z-N vertices) starts.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_XYZN_COMP</td>
+<td>Relative offset from SURFACE_START where the list of compressed Vertex objects and their normals (X-Y-Z-N vertices) starts.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_FRAME_BASE</td>
+<td>Relative offset from SURFACE_START where the list of frameBaseFrame starts. For each frame an index into Xyzn is stored. This is used to find where in Xyzn the non-compressed data can be found for a given frame.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_FRAME_COMP</td>
+<td>Relative offset from SURFACE_START where the list of frameCompFrame starts. For each frame an index into XyznCompressed is stored. This is used to find where in XyznCompressed the compressed data can be found for a given frame.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>OFS_END</td>
+<td>Relative offset from SURFACE_START to where the Surface object ends.</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(Triangle)</em></td>
+<td>List of Triangle objects usually starts immedately after the list of Shader objects, but use OFS_TRIANGLES (+ OFS_SURFACES).</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(Shader )</em></td>
+<td>List of Shader objects usually starts immediate after the Surface header, but use OFS_SHADERS (or rather, OFS_SHADERS+OFS_SURFACES for files).</td>
+</tr>
+<tr>
+<td>!</td>
+<td><em>(St)</em></td>
+<td>List of St objects usually starts immedately after the list of Triangle objects, but use OFS_ST (+ OFS_SURFACES).</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><em>(Xyzn)</em></td>
+<td>List of Vertex objects usually starts immediate after the list of St objects, but use OFS_XYZN (+ OFS_SURFACES). The total number of objects is (NUM_BASE_FRAMES * NUM_VERTS). One set of NUM_VERTS Vertex objects describes the Surface in one base frame of animation; the first NUM_VERTS Vertex objects describes the Surface in the first frame of animation, the second NUM_VERTEX Vertex objects describes the Surface in the second frame of animation, and so forth.</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><em>(XyznCompressed)</em></td>
+<td>List of compressed Vertex objects usually starts immediate after the list of <em>Xyzn</em> objects, but use OFS_XYZN_COMP (+ OFS_SURFACES). The total number of objects is (NUM_COMP_FRAMES * NUM_VERTS). One set of NUM_VERTS Vertex objects describes the Surface in one compressed frame of animation; the first NUM_VERTS Vertex objects describes the Surface in the first frame of animation, the second NUM_VERTEX Vertex objects describes the Surface in the second frame of animation, and so forth.</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td><em>(frameBaseFrame)</em></td>
+<td>&nbsp;List of base frame indices pointing into list of Xyzn.</td>
+</tr>
+<tr>
+<td>&nbsp;</td>
+<td>(frameCompFrame)</td>
+<td>&nbsp;List of compressed frame indices pointing into list of XyznCompressed.</td>
+</tr>
+<tr>
+<td>&nbsp;-</td>
+<td>SURFACE_END</td>
+<td>&nbsp;End of Surface object. Should match OFS_END.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h4>Triangle:&nbsp;</h4>
+<p>(member of Surface)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>S32 * 3</td>
+<td>INDEXES</td>
+<td>List of offset values into the list of Vertex objects that constitute the corners of the Triangle object. Vertex numbers are used instead of actual coordinates, as the coordinates are implicit in the Vertex object. The order defines the direction of the face normal and thus from which side the face is visible.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h4>Shader:</h4>
+<p>(member of Surface)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>U8 * <strong>MAX_QPATH</strong></td>
+<td>NAME</td>
+<td>Pathname of shader in the PK3. ASCII character string, NUL-terminated (C-style). Current value of <strong>MAX_QPATH</strong> is 64.</td>
+</tr>
+<tr>
+<td>S32</td>
+<td>SHADER_INDEX</td>
+<td>Shader index number. The shader index is calculated ingame and can be different on each game client (depends on the number of shaders present in the game path). This should not really be here?</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;&nbsp;</p>
+<h4>St:&nbsp;</h4>
+<p>(member of Surface)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>F32 * 2</td>
+<td>ST</td>
+<td>S-T (U-V) texture coordinate. Values tend to stay within [0.0 .. 1.0], but can go higher/lower. I kinda forgot this now, but T=0 means top, while T=1 means bottom. S=0 usually is left, and S=1 right.</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h4>Xyzn:&nbsp;</h4>
+<p>(member of Surface)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>S16</td>
+<td>X</td>
+<td>X-coordinate (in left-handed??? 3-space), scaled down by factor <strong>MD3_XYZ_SCALE</strong>. Current value of <strong>MD3_XYZ_SCALE</strong> is (1.0/64). (multiply by <strong>MD3_XYZ_SCALE</strong> to obtain original coordinate value)</td>
+</tr>
+<tr>
+<td>S16</td>
+<td>Y</td>
+<td>Y-coordinate (in left-handed??? 3-space), scaled down by factor <strong>MD3_XYZ_SCALE</strong>. Current value of <strong>MD3_XYZ_SCALE</strong> is (1.0/64). (multiply by <strong>MD3_XYZ_SCALE</strong> to obtain original coordinate value)</td>
+</tr>
+<tr>
+<td>S16</td>
+<td>Z</td>
+<td>Z-coordinate (in left-handed??? 3-space), scaled down by factor <strong>MD3_XYZ_SCALE</strong>. Current value of <strong>MD3_XYZ_SCALE</strong> is (1.0/64). (multiply by <strong>MD3_XYZ_SCALE</strong> to obtain original coordinate value)</td>
+</tr>
+<tr>
+<td>US16</td>
+<td>NORMAL</td>
+<td>Encoded normal vector (see Uncompressed Vertex Normals).</td>
+</tr>
+</tbody>
+</table>
+<p>&nbsp;</p>
+<h4>XyznCompressed:&nbsp;</h4>
+<p>(member of Surface)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>Datatype</th>
+<th>name/purpose</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>US32</td>
+<td>OFSVEC</td>
+<td>Compressed x, y, z coordinate and normal (in left-handed??? 3-space). Reads as 4 byte values. The first 3 bytes are the x, y, z coordinates. Conversion to float = co - MAX_OFS) * MDC_DIST_SCALE. Current value of MDC_DIST_SCALE is 1 / 20. This is also the main criteria for compression. If the offset vertex coordinate exceeds MAX_DIST = MDC_MAX_OFS * MDC_DIST_SCALE =6,35 relative to its baseframe, then the frame for this surface can not be compressed. The frame is then regarded as baseframe for all surfaces, not just this one. Current value of MDC_MAX_OFS is 127.0. The last byte is the compressed normal vector (see Compressed Vertex Normals).</td>
+</tr>
+</tbody>
+</table>
+<h1>&nbsp;</h1>
+<h1>Tags:&nbsp;</h1>
+<p>Tags are volumeless vectors. Tags are primarily used in aligning separate MD3 objects in-game. For example, the Tag object in the railgun model is called 'tag_weapon', and the position (and rotation) of this Tag gets aligned with those of the Tag named 'tag_weapon' in the player model, dragging the rest of the railgun model over with the [railgun's] Tag object. The railgun model follows its Tag positions and rotations, which in turn follows the positions and rotations of the player model Tag object (most noticeable in taunt animation). Tags are also used to line up the torso with the legs, and the head with the torso, and so on.</p>
+<p>&nbsp;</p>
+<h1>Uncompressed Vertex Normals:&nbsp;&nbsp;</h1>
+<h2>Encoding:&nbsp;</h2>
+<p>The encoded normal vector uses a spherical coordinate system. Since the normal vector is, by definition, a length of one, only the angles need to be recorded. Each angle is constrained within [0, 255], so as to fit in one octet. A normal vector encodes into 16 bits. (XXX: more blah)</p>
+<table border="1">
+<tbody>
+<tr>
+<th>15</th>
+<th>14</th>
+<th>13</th>
+<th>12</th>
+<th>11</th>
+<th>10</th>
+<th>9</th>
+<th>8</th>
+<th>7</th>
+<th>6</th>
+<th>5</th>
+<th>4</th>
+<th>3</th>
+<th>2</th>
+<th>1</th>
+<th>0</th>
+</tr>
+<tr>
+<td colspan="8" align="RIGHT">lat (latitude)</td>
+<td colspan="8" align="RIGHT">lng (longitude)</td>
+</tr>
+</tbody>
+</table>
+<p>(Code in q3tools/common/mathlib.c:NormalToLatLong) <code><br />
+lng &lt;- <strong>atan2</strong> ( y / x) * 255 / (2 * <strong>pi</strong>)<br />
+lat &lt;- <strong>acos</strong> ( z ) * 255 / (2 * <strong>pi</strong>)<br />
+lng &lt;- lower 8 bits of lng<br />
+lat &lt;- lower 8 bits of lat<br />
+normal &lt;- (lat <strong>shift-left</strong> 8) <strong>binary-or</strong> (lng)<br />
+<br /></code> Two special vectors are the ones that point up and point down, as these values for z result in a singularity for <strong>acos</strong>. The special case of straight-up is: <code><br />
+normal &lt;- 0<br />
+<br /></code> And the special case of straight down is: <code><br />
+lat &lt;- 0<br />
+lng &lt;- 128<br />
+normal &lt;- (lat <strong>shift-left</strong> 8) <strong>binary-or</strong> (lng)<br />
+<br /></code> or, shorter: <code><br />
+normal &lt;- 32768
+</code>&nbsp;</p>
+<h2>Decoding:&nbsp;</h2>
+<p>(Code in q3tools/q3map/misc_model.c:InsertMD3Model) <code><br />
+lat &lt;- ((normal <strong>shift-right</strong> 8) <strong>binary-and</strong> 255) * (2 * <strong>pi</strong>
+) / 255<br />
+lng &lt;- (normal <strong>binary-and</strong> 255) * (2 * <strong>pi</strong>) / 255<br />
+x &lt;- <strong>cos</strong> ( lat ) * <strong>sin</strong> ( lng )<br />
+y &lt;- <strong>sin</strong> ( lat ) * <strong>sin</strong> ( lng )<br />
+z &lt;- <strong>cos</strong> ( lng )</code></p>
+<p><code></code></p>
+<p><code></code></p>
+<p><code></code></p>
+<h1>Compressed Vertex Normals:&nbsp;</h1>
+<h2>Encoding:</h2>
+<p>To understand encoding imagine earth sliced up into 16 pieces along certain latitude values. On each latitude, the format now defines a certain number of evenly distributed longitudes. Near the poles, those longitude values are 4, near the equator, those longitude values are 32. The reason why there are just 4 longitudes on the poles is that near the poles, all normals are still pointing mostly south or north, so one does not need much detail in encoding and can devote finer detail to the longitudes on the equator.</p>
+<p>From this base thought an array of 256 normals is created. A bit more than the first half indices of this array is devoted to the latitudes ranging from [90, 180] degrees. The rest of the array devotes to (90, 0], in that order.</p>
+<p>Details can be gained by browsing Wolfgang Prinz, <a href="https://gamespy-archives.quaddicted.com/sites/www.planetwolfenstein.com/themdcfile/MDC_File_Format.pdf">The MDC File Format</a>.&nbsp;</p>
+<h2>Decoding:</h2>
+<p>Decoding now simply is taking the last byte of the ofsVec and indexing it into the array of 256 normals.</p>
+<p>&nbsp;</p>
