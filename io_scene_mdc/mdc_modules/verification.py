@@ -31,7 +31,10 @@ class Verify:
 
         # blenderScene.name
         nameLen = len(blenderScene.name)
-        if nameLen <= 0 or nameLen > MDCFileHeader.nameLen:
+        if nameLen <= 0:
+            blenderScene.name = "BlenderScene"
+
+        if nameLen > MDCFileHeader.nameLen:
             return (False, "Length of scene name out of bounds. Must be between {} and {}, found={}".format(0, MDCFileHeader.nameLen, nameLen))
 
         # blenderScene.numFrames
@@ -64,7 +67,7 @@ class Verify:
 
         # blenderScene.objects
         objectsLen = len(blenderScene.objects)
-        if objectsLen <= 0 or objectsLen > MDCSurface.maxSurfaces:
+        if objectsLen > MDCSurface.maxSurfaces:
             return (False, "Number of objects out of bounds. Must be between {} and {}, found={}".format(0, MDCSurface.maxSurfaces, objectsLen))
 
         for object in blenderScene.objects:
@@ -159,8 +162,7 @@ class Verify:
         if mdcFile.header.numTags > MDCTag.maxTags:
             return (False, "Number of tags out of bounds. Must be between {} and {}, found={}".format(0, MDCTag.maxTags, mdcFile.header.numTags))
 
-        if mdcFile.header.numSurfaces <= 0 or \
-           mdcFile.header.numSurfaces > MDCSurface.maxSurfaces:
+        if mdcFile.header.numSurfaces > MDCSurface.maxSurfaces:
             return (False, "Number of surfaces out of bounds. Must be between {} and {}, found={}".format(0, MDCSurface.maxSurfaces, mdcFile.header.numSurfaces))
 
         # mdcFile.frames
